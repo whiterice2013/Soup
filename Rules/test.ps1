@@ -1,7 +1,7 @@
 Import-Module "G:rules\invoke.psm1" -Force
 
 $files = Get-ChildItem "G:\Soup" -Filter "*.ps1"
-$f = $files[0]
+$f = $files[1]
 $dna = [string](Get-Content $f.FullName -Raw)
 
 $res = Invoke-BF $dna $f

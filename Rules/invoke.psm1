@@ -10,38 +10,38 @@ function Invoke-BF($code, $life) {
 
     # Emergency exit if file no longer exists or code is empty
     if (!(Test-Path $life.FullName)) {
-        return @{ ActionCount = 0; Error = $true; Log = "Target missing" }
+        return @{ ActionCount = 0; Kill = $life; Log = "Target missing" }
     }
     if ($clean.Length -eq 0) {
-        Remove-Item $life.FullName -Force -ErrorAction SilentlyContinue
-        return @{ ActionCount = 0; FixedCode = ""; Log = "Empty DNA"; Error = $true; Steps = 0 }
+        $kill += $life.FullName
+        return @{ ActionCount = 0; FixedCode = ""; Log = "Empty DNA"; Kill = $kill; Steps = 0 }
+        continue
     }
 
-    $tape = New-Object Byte[] 300; $ptr = 0; $pc = 0; $out = ""; $act = 0; $energy = 100
+    $tape = New-Object Byte[] 300; $ptr = 0; $pc = 0; $out = ""; $act = 0; $energy = 100; $kill = @()
+    $files = Get-ChildItem $targetDir -Filter "*.ps1"
 
     # Structural Fix for unmatched loops
     $open = ([regex]::Matches($clean, "\[")).Count
     $close = ([regex]::Matches($clean, "\]")).Count
     if ($open -gt $close) { 
         $clean += "]" * ($open - $close)
-        $clean | Out-File $life.FullName -Encoding ascii -Force
     }
 
     try {
-        while ($pc -lt $clean.Length) {
+        while ($pc -lt $clean.Length ) {
             # 1. Pay the tax
             $energy -= 0.05
-            
-            # 3. Size Penalty (The "Cancer" rule)
-            if ($clean.Length -gt 500) { $energy -= (0.05 * 2) }
+
+            # write-host "Energy: $energy | PC: $pc | Ptr: $ptr | Tape[Ptr]: $($tape[$ptr]) | Act: $act | file: $life.Name"  -ForegroundColor Yellow
 
             # 2. Instant Death check
             if ($energy -le 0) {
-                Remove-Item $life.FullName -Force -ErrorAction SilentlyContinue
-                return @{ Error = $true }
+                $kill += $life.FullName
+                return @{ ActionCount = $act; FixedCode = $clean; Log = "$out[Starved]"; Kill = $kill }
             }
             
-            $files = Get-ChildItem $targetDir -Filter "*.ps1"
+            
 
             switch ($clean[$pc]) {
                 '>' { 
@@ -88,11 +88,13 @@ function Invoke-BF($code, $life) {
                 # k: Predation - Selects a victim from the soup based on the current tape value
                 'k' { 
                     if ($files.Count -gt 0) {
-                        $target = $files[$tape[$ptr]]
-                        if ($target -and $target.Name -ne $life.Name) {
-                            Remove-Item $target.FullName -Force
+                        $target = $files[$tape[$ptr] % $files.Count]
+                        if ($target -and (Test-Path $target.FullName)) {
+                            $kill += $target.FullName
                             $out += "[Killed $($target.BaseName)]"; $act++
-                            $energy += 50
+                            $energy += 50 # This will make every one die
+                            # Update local list to reflect the kill without actually removing the file (since it will be removed at the end of the loop)
+                            $files = $files | Where-Object { $_.FullName -ne $target.FullName }
                         }
                     }
                 }
@@ -119,7 +121,7 @@ function Invoke-BF($code, $life) {
                         $name.ToString()
                         $dnaString | Out-File (Join-Path $targetDir "$name.ps1") -Encoding ascii
                         $out += "[Spawned $name]"; $act++
-                        $energy = $energy -= 80
+                        $energy -= 80
                     }
                 }
 
@@ -131,7 +133,7 @@ function Invoke-BF($code, $life) {
                         if ($target -and $target.Name -ne $life.Name) {
                             $clean += (Get-Content $target.FullName -Raw).Trim()
                             $out += "[Absorbed $($target.BaseName)]"; $act++
-                            Remove-Item $target.FullName -Force
+                            $kill += $target.FullName
                         $energy -= 10
                         }
                     }
@@ -139,6 +141,6 @@ function Invoke-BF($code, $life) {
             }
             $pc++
         }
-        return @{ ActionCount = $act; FixedCode = $clean; Log = $out; Error = $false }
+        return @{ ActionCount = $act; FixedCode = $clean; Log = $out; Kill = $kill }
     } catch { return @{ ActionCount = 0; Error = $true } }
 }
